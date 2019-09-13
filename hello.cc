@@ -560,9 +560,9 @@ struct MyRequest : public IWDFIoRequest {
             /* [annotation][in] */ 
             _In_  IRequestCallbackCancel *pCancelCallback){
             printf("MarkCancelable\r\n");
+            //this->cancelCallback = pCancelCallback;
         }
 
-        
         virtual HRESULT STDMETHODCALLTYPE UnmarkCancelable( void){
             printf("UnmarkCancelable\r\n");
             return 0;
@@ -1496,11 +1496,11 @@ main()
     trace_flags[4]=0x7f;
     printf("*0000000180233E20: %p\n", *(PVOID*)0x0000000180233E20);
     //return 1;
-*/
     unsigned char *trace_flags = (unsigned char *)0x000000180240820;
     trace_flags[1]=0x7f;
     trace_flags[4]=0x7f;
     printf("*0000000180240820: %p\n", *(PVOID*)0x0000000180240820);
+*/
 
     HRESULT rc;
 
@@ -1720,7 +1720,9 @@ main()
 
     printf("about to IOCTL_BIOMETRIC_CAPTURE_DATA\r\n");
     myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_CAPTURE_DATA, 0, 0);
-    //Sleep(1000);
+    Sleep(5000);
+    // printf("CANCEL!!!\n");
+    //req.cancelCallback->OnCancel(&req);
     //printf("wakey wakey\r\n");
     //rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
     /*
@@ -1735,6 +1737,9 @@ main()
     */
     while(!req.complete)
         Sleep(200);
+
+    Sleep(5000);
+    
     std::wcout 
         << L"=======================" << std::endl
         << L"PayloadSize " << data->PayloadSize << std::endl
