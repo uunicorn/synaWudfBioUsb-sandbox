@@ -1692,7 +1692,7 @@ main()
     }
     Sleep(2000);
 #endif
-#if 1
+#if 0
     {
     char ibuf[1024*10];
     WINBIO_CAPTURE_PARAMETERS *params = (WINBIO_CAPTURE_PARAMETERS *)ibuf;
@@ -1798,7 +1798,7 @@ main()
         
     }
 #endif
-#if 0
+#if 1
     Sleep(500);
     {
         {
