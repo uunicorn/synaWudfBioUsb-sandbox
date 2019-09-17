@@ -1839,6 +1839,7 @@ main()
                 myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_CAPTURE_DATA, 0, 0);
                 while(!req.complete)
                     Sleep(200);
+
                 std::wcout 
                     << L"=======================" << std::endl
                     << L"PayloadSize " << data->PayloadSize << std::endl
@@ -1848,6 +1849,11 @@ main()
                     << L"CaptureData.Size " << data->CaptureData.Size << std::endl
                     << L"=======================" << std::endl
                     ;
+
+                if(data->SensorStatus == 2) {
+                    Sleep(100);
+                    continue;
+                }
             }
 
     Sleep(100);
