@@ -1815,7 +1815,7 @@ main()
 
     Sleep(100);
 #if 1
-        for(int t=0;t<7;t++) {
+        for(int t=0;t<70;t++) {
             {
                 char ibuf[1024*10];
                 WINBIO_CAPTURE_PARAMETERS *params = (WINBIO_CAPTURE_PARAMETERS *)ibuf;
@@ -1868,6 +1868,8 @@ main()
                 for(int i=0;i<req.informationSize;i++)
                     printf("%02x", obuf[i]);
                 printf("\n");
+                if(obuf[36] == 100)
+                    break;
             }
     Sleep(100);
         }
