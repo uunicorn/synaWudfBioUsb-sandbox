@@ -154,11 +154,11 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
                                 std::ostreambuf_iterator<char>(output));
 
                         char hex[512], *p = hex;
-                        for(int i=0;i<(pv->blob.cbSize < 128 ? pv->blob.cbSize : 128);i++) {
+                        for(unsigned int i=0;i<(pv->blob.cbSize < 128 ? pv->blob.cbSize : 128);i++) {
                             p+=sprintf(p, "%02x", pv->blob.pBlobData[i]);
                         }
                         *p=0;
-                        printf("Blob value: %d: %s\n", pv->blob.cbSize, hex);
+                        printf("Blob value: %lu: %s\n", pv->blob.cbSize, hex);
                     }
                     break;
             }
@@ -365,7 +365,6 @@ struct MyMem : public IWDFMemory {
         virtual void *STDMETHODCALLTYPE GetDataBuffer( 
             /* [annotation][unique][out] */ 
             _Out_opt_  SIZE_T *BufferSize){
-            printf("GetDataBuffer %p\r\n", &GetDataBuffer);
             if(BufferSize) {
                 *BufferSize = size;
             }
@@ -464,7 +463,7 @@ struct MyRequest : public IWDFIoRequest {
         virtual void STDMETHODCALLTYPE SetInformation( 
             /* [annotation][in] */ 
             _In_  ULONG_PTR Information){
-            printf("SetInformation size=%ld\r\n", Information);
+            printf("SetInformation size=%lld\r\n", Information);
             informationSize = Information;
         }
 
@@ -472,7 +471,7 @@ struct MyRequest : public IWDFIoRequest {
         virtual void STDMETHODCALLTYPE Complete( 
             /* [annotation][in] */ 
             _In_  HRESULT CompletionStatus){
-            printf("Complete: %x %p\r\n", CompletionStatus, &CompletionStatus);
+            printf("Complete: %ld %p\r\n", CompletionStatus, &CompletionStatus);
             complete = TRUE;
         }
 
@@ -986,7 +985,7 @@ struct MyDevice : public IWDFDevice3 {
             _Out_writes_to_opt_(*pdwDeviceNameLength, *pdwDeviceNameLength)  PWSTR pDeviceName,
             /* [annotation][out][in] */ 
             _Inout_  DWORD *pdwDeviceNameLength){
-            printf("RetrieveDeviceName %p %d\r\n", pDeviceName, *pdwDeviceNameLength);
+            printf("RetrieveDeviceName %p %lu\r\n", pDeviceName, *pdwDeviceNameLength);
             static const wchar_t name[] =  L"c:\\usb.txt";
             //static const wchar_t name[] =  L"c:\\UMDF.txt";
             if(pDeviceName) {
@@ -1471,235 +1470,35 @@ operator << (std::basic_ostream<wchar_t> &os, WINBIO_REGISTERED_FORMAT r)
 
 int brk_on_decrypt = 0;
 
-int
-main()
+void
+identifyFeatureSet()
 {
-    IClassFactory *fact = 0;
+    //char ibuf[0x2000] = { 0 };
+    unsigned char obuf[0x888];
 
-    HMODULE pDll = LoadLibrary("synawudfbiousb.dll");
-    DllGetClassObject_t *proc = (DllGetClassObject_t*)GetProcAddress(pDll, "DllGetClassObject");
-    printf("about to create factory\r\n");
-    proc(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
-    LPVOID dibr = 0;
-    proc(GUID_DEVINTERFACE_BIOMETRIC_READER, IID_IUnknown, (LPVOID *)&dibr);
-    printf("GUID_DEVINTERFACE_BIOMETRIC_READER=%p\n", dibr);
-    printf("&brk_on_decrypt=%p\n", &brk_on_decrypt);
-    Sleep(5000);
-    //DllGetClassObject(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
-    IDriverEntry *inst;
-    printf("about to create instance fact = %p\r\n", fact);
-    fact->CreateInstance(NULL, IID_IDriverEntry, (LPVOID *)&inst);
-
-/*
-    unsigned char *trace_flags = (unsigned char *)0x0000000180233E20;
-    trace_flags[1]=0x7f;
-    trace_flags[4]=0x7f;
-    printf("*0000000180233E20: %p\n", *(PVOID*)0x0000000180233E20);
-    //return 1;
-    unsigned char *trace_flags = (unsigned char *)0x000000180240820;
-    trace_flags[1]=0x7f;
-    trace_flags[4]=0x7f;
-    printf("*0000000180240820: %p\n", *(PVOID*)0x0000000180240820);
-*/
-
-    HRESULT rc;
-
-    MyDriver *aDriver = new MyDriver();
-    printf("about to init %p\r\n", aDriver);
-    rc = inst->OnInitialize(aDriver);
-    printf("OnInitialize rc = %x\r\n", rc);
-    if(rc < 0) {
-        return 0;
-    }
-    Sleep(100);
-
-    MyDevInit *devinit = new MyDevInit();
-    printf("about to add device %p\r\n", devinit);
-    rc = inst->OnDeviceAdd(aDriver, devinit);
-    printf("OnDeviceAdd rc = %x\r\n", rc);
-    if(rc < 0) {
-        return 0;
-    }
-
-    goIdle = 0;
-
-    Sleep(100);
-    printf("about to prepare hw\r\n");
-    rc = myDevice->pnphwcb->OnPrepareHardware(myDevice);
-    printf("OnPrepareHardware rc = %x\r\n", rc);
-
-    if(rc < 0) {
-        return 0;
-    }
-
-    Sleep(100);
-    printf("about to enter D0 state\r\n");
-    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
-    printf("OnD0Entry rc = %x\r\n", rc);
-
-    if(rc < 0) {
-        return 0;
-    }
-
-#if 0
-    printf("about to release hw\r\n");
-    rc = myDevice->pnphwcb->OnReleaseHardware(myDevice);
-    printf("OnReleaseHardware rc = %x\r\n", rc);
-
-    if(rc < 0) {
-        return 0;
-    }
-#endif
-
-    puts("All done, sleeping");
-    while(!goIdle) {
-        Sleep(200);
-    }
-
-#if 1
-    {
-    unsigned char buf[8] = {0};
-    MyMem in(NULL, 0), out(buf, sizeof(buf));
-    MyRequest req(WdfRequestOther, 0x44202C, &out, &in);
-
-    printf("about to ioctl\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44202C, 0, sizeof(buf));
-    while(!req.complete)
-        Sleep(200);
-    /*
-    Sleep(4000);
-    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
-    Sleep(4000);
-    */
-    for(int i=0;i<sizeof(buf);i++) {
-        printf("%02x", buf[i]);
-    }
-    printf("\n");
-    }
-
-    {
-    char obuf[10*1024];
-    WINBIO_SENSOR_ATTRIBUTES *attrs = (WINBIO_SENSOR_ATTRIBUTES*)obuf;
+    //MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
     MyMem in(NULL, 0), out(obuf, sizeof(obuf));
-    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_GET_ATTRIBUTES, &out, &in);
+    MyRequest req(WdfRequestOther, 0x442004, &out, &in);
 
-    printf("about to ioctl\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_GET_ATTRIBUTES, 0, 0);
-    //Sleep(1000);
-    //rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+    printf("about to 0x442004\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442004, 0, 0);
     while(!req.complete)
         Sleep(200);
-    printf("WinBioHresult = %x\r\n", attrs->WinBioHresult);
-    std::wcout 
-        << L"PayloadSize: " << attrs->PayloadSize << std::endl
-        << L"ManufacturerName: " << attrs->ManufacturerName  << std::endl
-        << L"ModelName: " << attrs->ModelName  << std::endl
-        << L"SensorType: " << attrs->SensorType << std::endl
-        << L"SensorSubType: " << attrs->SensorSubType << std::endl
-        << L"Capabilities: " << attrs->Capabilities << std::endl
-        << L"SerialNumber: " << attrs->SerialNumber << std::endl
-        << L"FirmwareVersion: " << attrs->FirmwareVersion.MajorVersion << "." << attrs->FirmwareVersion.MinorVersion << std::endl
-        << L"SupportedFormatEntries: " << attrs->SupportedFormatEntries << std::endl
-        << std::endl;
-        for(int i=0;i<attrs->SupportedFormatEntries;i++) {
-            printf("  Owner=%04x, Type=%04x\n", 
-                    attrs->SupportedFormat[i].Owner, 
-                    attrs->SupportedFormat[i].Type);
-        }
-    }
-    {
-    char buf[1024*10];
-    WINBIO_DIAGNOSTICS *diag = (WINBIO_DIAGNOSTICS*)buf;
-
-    MyMem in(NULL, 0), out(buf, sizeof(buf));
-    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_GET_SENSOR_STATUS, &out, &in);
-
-    printf("about to ioctl\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_GET_SENSOR_STATUS, 0, 0);
-    while(!req.complete)
-        Sleep(200);
-    //Sleep(4000);
-    //rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
-    //Sleep(4000);
-    std::wcout 
-        << L"=======================" << std::endl
-        << L"PayloadSize " << diag->PayloadSize << std::endl
-        << L"WinBioHresult " << diag->WinBioHresult << std::endl
-        << L"SensorStatus " << diag->SensorStatus << std::endl
-        << L"VendorDiagnostics.Size " << diag->VendorDiagnostics.Size << std::endl
-        << L"=======================" << std::endl
-        ;
-    
-    }
-#if 0
-    {
-        // delete record
-    unsigned char ibuf[0x50] = { 
-        /* 4c, identity  */ 0x03, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00, 0xc5, 0x69, 0x85, 0x17, 0xbc, 0xff, 0x12, 0xe7, 0x24, 0x96, 0xb7, 0x63, 0xed, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        /* 04, subfactor */ 0xf6, 0x00, 0x00, 0x00,
-    };
-    unsigned char obuf[0x08] = { 0 };
-
-    MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
-    MyRequest req(WdfRequestOther, 0x442034, &out, &in);
-
-    printf("about to 442034\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442034, 0, 0);
-    while(!req.complete)
-        Sleep(200);
-    printf("Got back 0x%x bytes: ", req.informationSize);
-    for(int i=0;i<req.informationSize;i++)
+    printf("Got back 0x%llx bytes: ", req.informationSize);
+    for(LONG_PTR i=0;i<req.informationSize;i++)
         printf("%02x", obuf[i]);
     printf("\n");
-        
-    }
-#endif
-#if 0
-    {
-        MyMem in(NULL, 0), out(NULL, 0);
-        MyRequest req(WdfRequestOther, 0x44201C, &out, &in);
+}
 
-        printf("about to Discard Enrollment\r\n");
-        myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44201C, 0, 0);
-        while(!req.complete)
-            Sleep(200);
-    }
-#endif
-#if 0
-    {
-    WINBIO_SET_INDICATOR setInd;
-    setInd.PayloadSize = sizeof(setInd);
-    setInd.IndicatorStatus = WINBIO_INDICATOR_ON;
-    WINBIO_GET_INDICATOR getInd;
-    MyMem in(&setInd, sizeof(setInd)), out(&getInd, sizeof(getInd));
-    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_SET_INDICATOR, &out, &in);
-
-    std::wcout
-        << L"==== Before ===" << std::endl
-        << L"setInd.PayloadSize: " << setInd.PayloadSize << std::endl
-        << L"setInd.IndicatorStatus: " << setInd.IndicatorStatus << std::endl
-        ;
-    printf("about to ioctl\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_SET_INDICATOR, sizeof(setInd), sizeof(setInd));
-    Sleep(1000);
-    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
-
-    std::wcout 
-        << L"==== After ===" << std::endl
-        << L"getInd.PayloadSize: " << getInd.PayloadSize << std::endl
-        << L"getInd.IndicatorStatus: " << getInd.IndicatorStatus << std::endl
-        ;
-    }
-    Sleep(2000);
-#endif
-#if 1
-    {
+void
+identify()
+{
     char ibuf[1024*10];
     WINBIO_CAPTURE_PARAMETERS *params = (WINBIO_CAPTURE_PARAMETERS *)ibuf;
     char obuf[1024*100];
     WINBIO_CAPTURE_DATA *data = (WINBIO_CAPTURE_DATA *)obuf;
 
-    printf("sizeof(*params)=%d\n", sizeof(*params));
+    printf("sizeof(*params)=%lld\n", sizeof(*params));
 
     /*
 0:002> d 41c49a6830
@@ -1774,156 +1573,401 @@ main()
                 << L"BiometricDataFormat = " << hdr->BiometricDataFormat << std::endl
                 << L"ProductId = " << hdr->ProductId << std::endl
                 ;
-            printf("sz=%ld\n", (PUCHAR)(hdr+1) - data->CaptureData.Data);
+            printf("sz=%lld\n", (PUCHAR)(hdr+1) - data->CaptureData.Data);
         }
     }
-    
-    }
-    {
-    //char ibuf[0x2000] = { 0 };
-    unsigned char obuf[0x888];
+    identifyFeatureSet();
+}
 
-    //MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
-    MyMem in(NULL, 0), out(obuf, sizeof(obuf));
-    MyRequest req(WdfRequestOther, 0x442004, &out, &in);
+void
+commitEnrollment()
+{
+    //------------------------------- commit the enrollment --------------------------
+    UCHAR arecord[] = {
+        /* 4c, identity  */ 0x03, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00, 0xc5, 0x69, 0x85, 0x17, 0xbc, 0xff, 0x12, 0xe7, 0x24, 0x96, 0xb7, 0x63, 0xed, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        /* 04, subfactor */ 0xf7, 0x00, 0x00, 0x00,
+        /* 08, payload sz*/ 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        /* 08, payload   */ 'U', 'n', 'i', 'c', 'o', 'r', 'n', 0x00
+    };
 
-    printf("about to 0x442004\r\n");
-    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442004, 0, 0);
+    UCHAR obuf[1];
+    MyMem in(arecord, sizeof(arecord)), out(obuf, sizeof(obuf));
+    MyRequest req(WdfRequestOther, 0x442018, &out, &in);
+
+    printf("about to Commit Enrollment\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442018, 0, 0);
     while(!req.complete)
         Sleep(200);
-    printf("Got back 0x%x bytes: ", req.informationSize);
-    for(int i=0;i<req.informationSize;i++)
+
+    printf("Got back 0x%llx bytes: ", req.informationSize);
+    for(LONG_PTR i=0;i<req.informationSize;i++)
         printf("%02x", obuf[i]);
     printf("\n");
-        
-    }
-#endif
-#if 0
+}
+
+void
+enroll()
+{
     Sleep(500);
-    {
-        {
-            //UCHAR ibuf[] = { 1, 0, 0, 0 };
-            //MyMem in(ibuf, sizeof(ibuf)), out(NULL, 0);
-            MyMem in(NULL, 0), out(NULL, 0);
-            MyRequest req(WdfRequestOther, 0x44200C, &out, &in);
+    
+    //UCHAR ibuf[] = { 1, 0, 0, 0 };
+    //MyMem in(ibuf, sizeof(ibuf)), out(NULL, 0);
+    MyMem in(NULL, 0), out(NULL, 0);
+    MyRequest req(WdfRequestOther, 0x44200C, &out, &in);
 
-            printf("about to Create Enrollment\r\n");
-            myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44200C, 0, 0);
-            while(!req.complete)
-                Sleep(200);
+    printf("about to Create Enrollment\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44200C, 0, 0);
+    while(!req.complete)
+        Sleep(200);
+
+    Sleep(100);
+
+    // keep going until template is complete
+    for(int t=0;t<70;t++) {
+        char ibuf[1024*10];
+        WINBIO_CAPTURE_PARAMETERS *params = (WINBIO_CAPTURE_PARAMETERS *)ibuf;
+        char obuf[1024*100];
+        WINBIO_CAPTURE_DATA *data = (WINBIO_CAPTURE_DATA *)obuf;
+
+        memset(ibuf, 0, sizeof(ibuf));
+        params->PayloadSize = sizeof(*params);
+        //params->Purpose = WINBIO_PURPOSE_IDENTIFY;
+        params->Purpose = WINBIO_PURPOSE_ENROLL_FOR_IDENTIFICATION;
+        ((uint64_t*)&params->VendorFormat)[0] = 0x46DCFA2072A4E245L;
+        ((uint64_t*)&params->VendorFormat)[1] = 0xA927C0D0BA850395L;
+        params->Format.Owner = 0;
+        params->Format.Type = 0;
+        params->Flags = WINBIO_DATA_FLAG_PROCESSED;
+
+        MyMem in(ibuf, sizeof(*params)), out(obuf, sizeof(obuf));
+        MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_CAPTURE_DATA, &out, &in);
+
+        printf("about to IOCTL_BIOMETRIC_CAPTURE_DATA\r\n");
+        myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_CAPTURE_DATA, 0, 0);
+        while(!req.complete)
+            Sleep(200);
+
+        std::wcout 
+            << L"=======================" << std::endl
+            << L"PayloadSize " << data->PayloadSize << std::endl
+            << L"WinBioHresult " << data->WinBioHresult << std::endl
+            << L"SensorStatus " << data->SensorStatus << std::endl
+            << L"RejectDetail " << data->RejectDetail << std::endl
+            << L"CaptureData.Size " << data->CaptureData.Size << std::endl
+            << L"=======================" << std::endl
+            ;
+
+        // scan failed?
+        if(data->SensorStatus == 2) {
+            Sleep(100);
+            continue;
         }
 
-    Sleep(100);
-#if 1
-        for(int t=0;t<70;t++) {
-            {
-                char ibuf[1024*10];
-                WINBIO_CAPTURE_PARAMETERS *params = (WINBIO_CAPTURE_PARAMETERS *)ibuf;
-                char obuf[1024*100];
-                WINBIO_CAPTURE_DATA *data = (WINBIO_CAPTURE_DATA *)obuf;
-
-                memset(ibuf, 0, sizeof(ibuf));
-                params->PayloadSize = sizeof(*params);
-                //params->Purpose = WINBIO_PURPOSE_IDENTIFY;
-                params->Purpose = WINBIO_PURPOSE_ENROLL_FOR_IDENTIFICATION;
-                ((uint64_t*)&params->VendorFormat)[0] = 0x46DCFA2072A4E245L;
-                ((uint64_t*)&params->VendorFormat)[1] = 0xA927C0D0BA850395L;
-                params->Format.Owner = 0;
-                params->Format.Type = 0;
-                params->Flags = WINBIO_DATA_FLAG_PROCESSED;
-
-                MyMem in(ibuf, sizeof(*params)), out(obuf, sizeof(obuf));
-                MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_CAPTURE_DATA, &out, &in);
-
-                printf("about to IOCTL_BIOMETRIC_CAPTURE_DATA\r\n");
-                myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_CAPTURE_DATA, 0, 0);
-                while(!req.complete)
-                    Sleep(200);
-
-                std::wcout 
-                    << L"=======================" << std::endl
-                    << L"PayloadSize " << data->PayloadSize << std::endl
-                    << L"WinBioHresult " << data->WinBioHresult << std::endl
-                    << L"SensorStatus " << data->SensorStatus << std::endl
-                    << L"RejectDetail " << data->RejectDetail << std::endl
-                    << L"CaptureData.Size " << data->CaptureData.Size << std::endl
-                    << L"=======================" << std::endl
-                    ;
-
-                if(data->SensorStatus == 2) {
-                    Sleep(100);
-                    continue;
-                }
-            }
-
-    Sleep(100);
-            {
-                UCHAR obuf[0x2c];
-                MyMem in(NULL, 0), out(obuf, sizeof(obuf));
-                MyRequest req(WdfRequestOther, 0x442010, &out, &in);
-
-                if(t == 6) {
-                    brk_on_decrypt = 1;
-                }
-                printf("about to Update Enrollment\r\n");
-                myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442010, 0, 0);
-                while(!req.complete)
-                    Sleep(200);
-
-                printf("Got back 0x%x bytes: ", req.informationSize);
-                for(int i=0;i<req.informationSize;i++)
-                    printf("%02x", obuf[i]);
-                printf("\n");
-                if(obuf[36] == 100)
-                    break;
-            }
-    Sleep(100);
-        }
-
+        Sleep(100);
         {
-            UCHAR obuf[0x50];
+            UCHAR obuf[0x2c];
             MyMem in(NULL, 0), out(obuf, sizeof(obuf));
-            MyRequest req(WdfRequestOther, 0x442014, &out, &in);
+            MyRequest req(WdfRequestOther, 0x442010, &out, &in);
 
-            printf("about to Check For Duplicate\r\n");
-            myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442014, 0, 0);
+            if(t == 6) {
+                brk_on_decrypt = 1;
+            }
+            printf("about to Update Enrollment\r\n");
+            myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442010, 0, 0);
             while(!req.complete)
                 Sleep(200);
 
-            printf("Got back 0x%x bytes: ", req.informationSize);
-            for(int i=0;i<req.informationSize;i++)
+            printf("Got back 0x%llx bytes: ", req.informationSize);
+            for(LONG_PTR i=0;i<req.informationSize;i++)
                 printf("%02x", obuf[i]);
             printf("\n");
+
+            printf("==============================================================================================\n");
+            printf("                           %d %% complete\n", obuf[36]);
+            printf("==============================================================================================\n");
+            if(obuf[36] == 100)
+                break;
         }
-#endif
+        Sleep(100);
+    }
+
+    //------------------------------- check for dups --------------------------
+    {
+        UCHAR obuf[0x50];
+        MyMem in(NULL, 0), out(obuf, sizeof(obuf));
+        MyRequest req(WdfRequestOther, 0x442014, &out, &in);
+
+        printf("about to Check For Duplicate\r\n");
+        myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442014, 0, 0);
+        while(!req.complete)
+            Sleep(200);
+
+        printf("Got back 0x%llx bytes: ", req.informationSize);
+        for(LONG_PTR i=0;i<req.informationSize;i++)
+            printf("%02x", obuf[i]);
+        printf("\n");
+    }
+
     Sleep(1000);
-        {
-            UCHAR arecord[] = {
-                /* 4c, identity  */ 0x03, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00, 0xc5, 0x69, 0x85, 0x17, 0xbc, 0xff, 0x12, 0xe7, 0x24, 0x96, 0xb7, 0x63, 0xed, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                /* 04, subfactor */ 0xf7, 0x00, 0x00, 0x00,
-                /* 08, payload sz*/ 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                /* 08, payload   */ 'U', 'n', 'i', 'c', 'o', 'r', 'n', 0x00
-            };
 
-            UCHAR obuf[1];
-            MyMem in(arecord, sizeof(arecord)), out(obuf, sizeof(obuf));
-            MyRequest req(WdfRequestOther, 0x442018, &out, &in);
+    commitEnrollment();
+}
 
-            printf("about to Commit Enrollment\r\n");
-            myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442018, 0, 0);
-            while(!req.complete)
-                Sleep(200);
+void
+getSensorStatus()
+{
+    char buf[1024*10];
+    WINBIO_DIAGNOSTICS *diag = (WINBIO_DIAGNOSTICS*)buf;
 
-            printf("Got back 0x%x bytes: ", req.informationSize);
-            for(int i=0;i<req.informationSize;i++)
-                printf("%02x", obuf[i]);
-            printf("\n");
+    MyMem in(NULL, 0), out(buf, sizeof(buf));
+    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_GET_SENSOR_STATUS, &out, &in);
 
+    printf("about to ioctl\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_GET_SENSOR_STATUS, 0, 0);
+    while(!req.complete)
+        Sleep(200);
+    //Sleep(4000);
+    //rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+    //Sleep(4000);
+    std::wcout 
+        << L"=======================" << std::endl
+        << L"PayloadSize " << diag->PayloadSize << std::endl
+        << L"WinBioHresult " << diag->WinBioHresult << std::endl
+        << L"SensorStatus " << diag->SensorStatus << std::endl
+        << L"VendorDiagnostics.Size " << diag->VendorDiagnostics.Size << std::endl
+        << L"=======================" << std::endl
+        ;
+    
+}
+
+void
+getAttributes()
+{
+    char obuf[10*1024];
+    WINBIO_SENSOR_ATTRIBUTES *attrs = (WINBIO_SENSOR_ATTRIBUTES*)obuf;
+    MyMem in(NULL, 0), out(obuf, sizeof(obuf));
+    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_GET_ATTRIBUTES, &out, &in);
+
+    printf("about to ioctl\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_GET_ATTRIBUTES, 0, 0);
+    //Sleep(1000);
+    //rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+    while(!req.complete)
+        Sleep(200);
+    printf("WinBioHresult = %lx\r\n", attrs->WinBioHresult);
+    std::wcout 
+        << L"PayloadSize: " << attrs->PayloadSize << std::endl
+        << L"ManufacturerName: " << attrs->ManufacturerName  << std::endl
+        << L"ModelName: " << attrs->ModelName  << std::endl
+        << L"SensorType: " << attrs->SensorType << std::endl
+        << L"SensorSubType: " << attrs->SensorSubType << std::endl
+        << L"Capabilities: " << attrs->Capabilities << std::endl
+        << L"SerialNumber: " << attrs->SerialNumber << std::endl
+        << L"FirmwareVersion: " << attrs->FirmwareVersion.MajorVersion << "." << attrs->FirmwareVersion.MinorVersion << std::endl
+        << L"SupportedFormatEntries: " << attrs->SupportedFormatEntries << std::endl
+        << std::endl;
+        for(unsigned int i=0;i<attrs->SupportedFormatEntries;i++) {
+            printf("  Owner=%04x, Type=%04x\n", 
+                    attrs->SupportedFormat[i].Owner, 
+                    attrs->SupportedFormat[i].Type);
         }
+}
 
+void
+deleteRecord()
+{
+        // delete record
+    unsigned char ibuf[0x50] = { 
+        /* 4c, identity  */ 0x03, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00, 0xc5, 0x69, 0x85, 0x17, 0xbc, 0xff, 0x12, 0xe7, 0x24, 0x96, 0xb7, 0x63, 0xed, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        /* 04, subfactor */ 0xf6, 0x00, 0x00, 0x00,
+    };
+    unsigned char obuf[0x08] = { 0 };
+
+    MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
+    MyRequest req(WdfRequestOther, 0x442034, &out, &in);
+
+    printf("about to 442034\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442034, 0, 0);
+    while(!req.complete)
+        Sleep(200);
+    printf("Got back 0x%llx bytes: ", req.informationSize);
+    for(LONG_PTR i=0;i<req.informationSize;i++)
+        printf("%02x", obuf[i]);
+    printf("\n");
+}
+
+void
+discardEnrollment()
+{
+    MyMem in(NULL, 0), out(NULL, 0);
+    MyRequest req(WdfRequestOther, 0x44201C, &out, &in);
+
+    printf("about to Discard Enrollment\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44201C, 0, 0);
+    while(!req.complete)
+        Sleep(200);
+}
+
+void
+setIndicator()
+{
+    HRESULT rc;
+    WINBIO_SET_INDICATOR setInd;
+    setInd.PayloadSize = sizeof(setInd);
+    setInd.IndicatorStatus = WINBIO_INDICATOR_ON;
+    WINBIO_GET_INDICATOR getInd;
+    MyMem in(&setInd, sizeof(setInd)), out(&getInd, sizeof(getInd));
+    MyRequest req(WdfRequestOther, IOCTL_BIOMETRIC_SET_INDICATOR, &out, &in);
+
+    std::wcout
+        << L"==== Before ===" << std::endl
+        << L"setInd.PayloadSize: " << setInd.PayloadSize << std::endl
+        << L"setInd.IndicatorStatus: " << setInd.IndicatorStatus << std::endl
+        ;
+    printf("about to ioctl\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_SET_INDICATOR, sizeof(setInd), sizeof(setInd));
+    Sleep(1000);
+    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+
+    std::wcout 
+        << L"rc=" << rc << std::endl
+        << L"==== After ===" << std::endl
+        << L"getInd.PayloadSize: " << getInd.PayloadSize << std::endl
+        << L"getInd.IndicatorStatus: " << getInd.IndicatorStatus << std::endl
+        ;
+}
+
+void
+getDatabaseSize()
+{
+    unsigned char buf[8] = {0};
+    MyMem in(NULL, 0), out(buf, sizeof(buf));
+    MyRequest req(WdfRequestOther, 0x44202C, &out, &in);
+
+    printf("about to ioctl StorageAdapterGetDatabaseSize\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44202C, 0, sizeof(buf));
+    while(!req.complete)
+        Sleep(200);
+    /*
+    Sleep(4000);
+    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+    Sleep(4000);
+    */
+    for(unsigned int i=0;i<sizeof(buf);i++) {
+        printf("%02x", buf[i]);
+    }
+    printf("\n");
+}
+
+void
+usage()
+{
+    puts("Usage: wine a.exe <identify|enroll>");
+}
+
+int
+main(int argc, char *argv[])
+{
+    void (*what)();
+    IClassFactory *fact = 0;
+
+    if(argc != 2) {
+        usage();
+        return 3;
+    }
+
+    if(strcasecmp(argv[1], "identify") == 0) {
+        what = identify;
+    }
+    else if(strcasecmp(argv[1], "enroll") == 0) {
+        what = enroll;
+    }
+    else {
+        usage();
+        return 3;
+    }
+
+    HMODULE pDll = LoadLibrary("synawudfbiousb.dll");
+    DllGetClassObject_t *proc = (DllGetClassObject_t*)GetProcAddress(pDll, "DllGetClassObject");
+    printf("about to create factory\r\n");
+    proc(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
+    LPVOID dibr = 0;
+    proc(GUID_DEVINTERFACE_BIOMETRIC_READER, IID_IUnknown, (LPVOID *)&dibr);
+    printf("GUID_DEVINTERFACE_BIOMETRIC_READER=%p\n", dibr);
+    printf("&brk_on_decrypt=%p\n", &brk_on_decrypt);
+    Sleep(5000);
+    //DllGetClassObject(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
+    IDriverEntry *inst;
+    printf("about to create instance fact = %p\r\n", fact);
+    fact->CreateInstance(NULL, IID_IDriverEntry, (LPVOID *)&inst);
+
+/*
+    unsigned char *trace_flags = (unsigned char *)0x0000000180233E20;
+    trace_flags[1]=0x7f;
+    trace_flags[4]=0x7f;
+    printf("*0000000180233E20: %p\n", *(PVOID*)0x0000000180233E20);
+    //return 1;
+    unsigned char *trace_flags = (unsigned char *)0x000000180240820;
+    trace_flags[1]=0x7f;
+    trace_flags[4]=0x7f;
+    printf("*0000000180240820: %p\n", *(PVOID*)0x0000000180240820);
+*/
+
+    HRESULT rc;
+
+    MyDriver *aDriver = new MyDriver();
+    printf("about to init %p\r\n", aDriver);
+    rc = inst->OnInitialize(aDriver);
+    printf("OnInitialize rc = %lx\r\n", rc);
+    if(rc < 0) {
+        return 0;
+    }
+    Sleep(100);
+
+    MyDevInit *devinit = new MyDevInit();
+    printf("about to add device %p\r\n", devinit);
+    rc = inst->OnDeviceAdd(aDriver, devinit);
+    printf("OnDeviceAdd rc = %lx\r\n", rc);
+    if(rc < 0) {
+        return 0;
+    }
+
+    goIdle = 0;
+
+    Sleep(100);
+    printf("about to prepare hw\r\n");
+    rc = myDevice->pnphwcb->OnPrepareHardware(myDevice);
+    printf("OnPrepareHardware rc = %lx\r\n", rc);
+
+    if(rc < 0) {
+        return 0;
+    }
+
+    Sleep(100);
+    printf("about to enter D0 state\r\n");
+    rc = myDevice->pnpcb->OnD0Entry(myDevice, WdfPowerDeviceInvalid);
+    printf("OnD0Entry rc = %lx\r\n", rc);
+
+    if(rc < 0) {
+        return 0;
+    }
+
+#if 0
+    printf("about to release hw\r\n");
+    rc = myDevice->pnphwcb->OnReleaseHardware(myDevice);
+    printf("OnReleaseHardware rc = %lx\r\n", rc);
+
+    if(rc < 0) {
+        return 0;
     }
 #endif
-#endif
+
+    puts("All done, sleeping");
+    while(!goIdle) {
+        Sleep(200);
+    }
+
+    what();
 
     printf("about to de-init\r\n");
     inst->OnDeinitialize(aDriver);
