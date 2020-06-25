@@ -155,8 +155,8 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
                         std::copy(pv->blob.pBlobData, pv->blob.pBlobData + pv->blob.cbSize,
                                 std::ostreambuf_iterator<char>(output));
 
-                        char hex[512], *p = hex;
-                        for(unsigned int i=0;i<(pv->blob.cbSize < 128 ? pv->blob.cbSize : 128);i++) {
+                        char hex[800020], *p = hex;
+                        for(unsigned int i=0;i<(pv->blob.cbSize < 400000? pv->blob.cbSize : 400000);i++) {
                             p+=sprintf(p, "%02x", pv->blob.pBlobData[i]);
                         }
                         *p=0;
