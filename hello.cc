@@ -1862,12 +1862,6 @@ getDatabaseSize()
 }
 
 void
-usage()
-{
-    puts("Usage: wine a.exe <identify|enroll>");
-}
-
-void
 blah()
 {
     puts("blah");
@@ -1892,10 +1886,10 @@ print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
 
-    printf("RCX=%16llx\n", ctx->Rcx);
-    printf("RDX=%16llx\n", ctx->Rdx);
-    printf("R8=%16llx\n", ctx->R8);
-    printf("R9=%16llx\n", ctx->R9);
+    printf("RCX = %016llx\n", ctx->Rcx);
+    printf("RDX = %016llx\n", ctx->Rdx);
+    printf("R8  = %016llx\n", ctx->R8);
+    printf("R9  = %016llx\n", ctx->R9);
 }
 
 void
@@ -1911,6 +1905,18 @@ struct breakpoint breakpoints[] = {
     { (unsigned char *)0x18005FD40, handle_reset_calib_data_and_calibrate },
     { 0 }
 };
+
+void
+nop()
+{
+}
+
+void
+usage()
+{
+    puts("Usage: wine a.exe <nop|identify|enroll>");
+}
+
 
 int
 main(int argc, char *argv[])
@@ -1928,6 +1934,9 @@ main(int argc, char *argv[])
     }
     else if(strcasecmp(argv[1], "enroll") == 0) {
         what = enroll;
+    }
+    else if(strcasecmp(argv[1], "nop") == 0) {
+        what = nop;
     }
     else {
         usage();
@@ -1972,7 +1981,7 @@ main(int argc, char *argv[])
     Sleep(100);
 
     // Driver loaded, instument the code
-    //set_bps(breakpoints);
+    set_bps(breakpoints);
     // Test breakpoints
     blah();
     blah();
