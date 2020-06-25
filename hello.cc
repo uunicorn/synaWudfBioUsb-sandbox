@@ -18,6 +18,8 @@
 #define NTDDI_VERSION NTDDI_WIN7
 #include "winbio_ioctl.h"
 
+#include "breakpoints.h"
+
 extern "C" {
 HRESULT WINAPI PropVariantToInt32(REFPROPVARIANT propvarIn, LONG *ret);
 
@@ -1865,6 +1867,51 @@ usage()
     puts("Usage: wine a.exe <identify|enroll>");
 }
 
+void
+blah()
+{
+    puts("blah");
+}
+
+void
+handle_blah(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    printf("Yay! Breakpoints work\n");
+}
+
+void
+handle_trace(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    
+    printf("Trace: %s:%lld\n", ctx->Rcx, ctx->Rdx);
+}
+
+void
+print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+
+    printf("RCX=%16llx\n", ctx->Rcx);
+    printf("RDX=%16llx\n", ctx->Rdx);
+    printf("R8=%16llx\n", ctx->R8);
+    printf("R9=%16llx\n", ctx->R9);
+}
+
+void
+handle_reset_calib_data_and_calibrate(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    printf("reset_calib_data_and_calibrate:\n");
+    print_regs(ExceptionInfo);
+}
+
+struct breakpoint breakpoints[] = {
+    { (unsigned char *)blah, handle_blah },
+    { (unsigned char *)0x1800409B0, handle_trace },
+    { (unsigned char *)0x18005FD40, handle_reset_calib_data_and_calibrate },
+    { 0 }
+};
+
 int
 main(int argc, char *argv[])
 {
@@ -1923,6 +1970,12 @@ main(int argc, char *argv[])
         return 0;
     }
     Sleep(100);
+
+    // Driver loaded, instument the code
+    //set_bps(breakpoints);
+    // Test breakpoints
+    blah();
+    blah();
 
     MyDevInit *devinit = new MyDevInit();
     printf("about to add device %p\r\n", devinit);
