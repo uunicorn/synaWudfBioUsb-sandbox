@@ -1470,8 +1470,6 @@ operator << (std::basic_ostream<wchar_t> &os, WINBIO_REGISTERED_FORMAT r)
     return os << L"Owher=" << r.Owner << L", Type=" << r.Type;
 }
 
-int brk_on_decrypt = 0;
-
 void
 identifyFeatureSet()
 {
@@ -1671,9 +1669,6 @@ enroll()
             MyMem in(NULL, 0), out(obuf, sizeof(obuf));
             MyRequest req(WdfRequestOther, 0x442010, &out, &in);
 
-            if(t == 6) {
-                brk_on_decrypt = 1;
-            }
             printf("about to Update Enrollment\r\n");
             myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x442010, 0, 0);
             while(!req.complete)
@@ -1885,11 +1880,21 @@ void
 print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    size_t i;
 
+    // ExceptionInfo->ExceptionRecord->ExceptionAddress
+    printf("============================================ Breakpoint at %p ===================================\n", ctx->Rip);
+    printf("RSP = %016llx\n", ctx->Rsp);
     printf("RCX = %016llx\n", ctx->Rcx);
     printf("RDX = %016llx\n", ctx->Rdx);
     printf("R8  = %016llx\n", ctx->R8);
     printf("R9  = %016llx\n", ctx->R9);
+
+    printf("Stack:\n");
+    for(i=0;i<40;i++) {
+        printf("    %016llx\n", rsp[i]);
+    }
 }
 
 void
@@ -1899,10 +1904,318 @@ handle_reset_calib_data_and_calibrate(_EXCEPTION_POINTERS *ExceptionInfo)
     print_regs(ExceptionInfo);
 }
 
+void
+handle_calibrate_iteration(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    printf("==========================================================================================\n");
+    printf("                          PHASE %d\n", ExceptionInfo->ContextRecord->Rdx);
+    printf("==========================================================================================\n");
+}
+
+const uint8_t target[] = { 
+//0x4e, 0x00, 0x28, 0x00, 0xfb, 0xb2, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x30, 0x00, 0x00, 0x00, 0x87, 0x00, 0x02, 0x00, 0x67, 0x00, 0x0a, 0x00, 0x01, 0x80, 0x00, 0x00, 0x0a, 0x02, 0x00, 0x00, 0x0b, 0x19, 0x00, 0x00, 0x88, 0x13, 0xb8, 0x0b, 0x01, 0x09, 0x10, 0x00, 
+0x17, 0x00, 0x00, 0x00, 
+};
+
+
+void
+handle_malloc(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint64_t *rax = (uint64_t *)ctx->Rax;
+    uint32_t len = (uint32_t)rsp[5+1];
+    size_t i;
+    
+    printf("malloc %ld: %p\n", len, rax);
+    if(len == 13440) {
+
+        for(i=0;i<40;i++) {
+            printf("    %016llx\n", rsp[i]);
+        }
+    }
+}
+
+void
+handle_memmove(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint8_t *dst = (uint8_t*)rsp[1+5];
+    uint8_t *src = (uint8_t*)rsp[2+5];
+    size_t len = (uint32_t)rsp[3+5];
+    //uint8_t *src = (uint8_t*)ctx->Rdx;
+    //uint8_t *dst = (uint8_t*)ctx->Rcx;
+    //size_t len = ctx->R8;
+    size_t i;
+
+    printf("memmove %p -> %p (%lld): ", src, dst, len);
+    for(i=0;i<len;i++)
+        printf("%02x", src[i]);
+    puts("");
+
+    if(len >= sizeof(target) && memcmp(src, target, sizeof(target)) == 0) {
+        for(i=0;i<40;i++) {
+            printf("    %016llx\n", rsp[i]);
+        }
+        //ctx->Dr0 = (uint64_t)(src+360);
+        //ctx->Dr7 = (1 << 0) | (1 << 16) | (3 << 18);
+        //SetThreadContext(GetCurrentThread(), ExceptionInfo->ContextRecord); // non-return
+    }
+}
+
+void
+print_biometric_device(uint64_t *rcx)
+{
+    size_t i, j;
+
+    printf("Biometric device:\n");
+    for(i=0;i<140;i++) {
+        printf("    %04llx: 0x%016llx\n", i*8, rcx[i]);
+        if(i*8 == 0x28) { // device/fw info (as returned by cmd_01)
+            uint64_t *f28 = (uint64_t *)rcx[i];
+            for(j=0;j<10;j++) {
+                printf("        %04llx: 0x%016llx\n", j*8, f28[j]);
+            }
+        }
+
+        if(i*8 == 0x288) { // calibration info
+            uint64_t *f28 = (uint64_t *)rcx[i];
+            for(j=0;j<40;j++) {
+                printf("        %04llx: 0x%016llx\n", j*8, f28[j]);
+                if(j*8 == 0x80 && f28[j]) {
+                    uint8_t *cal_blob = (uint8_t *)f28[j];
+                    int k;
+                    printf("            Calibration blob: ");
+                    for(k=0;k<0x80;k++) {
+                        printf("%02x", cal_blob[k]);
+                    }
+                    printf("...\n");
+                }
+
+                if(j*8 == 0x68 && f28[j]) {
+                    uint8_t *cal_blob = (uint8_t *)f28[j];
+                    int k;
+                    printf("            field_68: ");
+                    for(k=0;k<0x80;k++) {
+                        printf("%02x", cal_blob[k]);
+                    }
+                    printf("...\n");
+                }
+
+                if(j*8 == 0x98 && f28[j]) {
+                    uint8_t *cal_blob = (uint8_t *)f28[j];
+                    int k;
+                    printf("            Calibration blob2: ");
+                    for(k=0;k<0x80;k++) {
+                        printf("%02x", cal_blob[k]);
+                    }
+                    printf("...\n");
+                }
+            }
+        }
+    }
+}
+
+void
+handle_line_update(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint64_t *rcx = (uint64_t *)ctx->Rcx;
+
+    //print_regs(ExceptionInfo);
+    print_biometric_device(rcx);
+}
+
+void
+pp(uint64_t *tmp)
+{
+    printf(" %016llx %016llx\n", tmp[0], tmp[1]);
+}
+
+void
+handle_create_line_transform_segment(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    size_t i, j;
+
+    pp((uint64_t *)ctx->Rcx);
+    pp((uint64_t *)ctx->Rdx);
+    pp((uint64_t *)ctx->R8);
+    pp((uint64_t *)ctx->R9);
+    pp((uint64_t *)rsp[6]);
+    pp((uint64_t *)rsp[7]);
+
+    print_regs(ExceptionInfo);
+    for(i=0;i<40;i++) {
+        printf("    %016llx\n", rsp[i]);
+    }
+}
+
+void
+handle_z(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint8_t *src = (uint8_t*)ctx->Rax;
+    int i;
+
+    print_regs(ExceptionInfo);
+    printf("z: ");
+    for(i=0;i<0x20;i++)
+        printf("%02x", src[i]);
+    puts("");
+}
+
+void
+handle_avg(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    // 58h
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint8_t *src = (uint8_t *)rsp[(0x58+0x10)/8];
+    uint64_t *dst_struct = (uint64_t *)rsp[(0x58+0x30)/8];
+    uint8_t *dst = (uint8_t *)dst_struct[0x10/8];
+    int i;
+
+    print_regs(ExceptionInfo);
+    printf("In: ");
+    for(i=0;i<0x200;i++)
+        printf("%02x", src[i]);
+    puts("");
+    printf("Out: ");
+    for(i=0;i<0x200;i++)
+        printf("%02x", dst[i]);
+    puts("");
+}
+
+void
+handle_scale_calibration_buffer_start(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *biometricDevice = *(uint64_t **)ctx->Rcx;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint64_t *calib_results;
+    uint8_t *src;
+    int i;
+
+    calib_results= biometricDevice + 0xd8/8;
+    src = (uint8_t *)calib_results[0x10/8];
+    if(src) {
+        printf("In: ");
+        for(i=0;i<0x200;i++)
+            printf("%02x", src[i]);
+        puts("");
+    }
+}
+
+void
+handle_scale_calibration_buffer_end(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *biometricDevice;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint64_t *calib_results, *calib_info;
+    uint8_t *src, *dst;
+    int i;
+
+    rsp += 0xc8/8;
+    printf("arg_28=%d\n", (uint16_t)rsp[0x30/8]);
+    printf("arg_8=%d\n", (uint16_t)rsp[0x10/8]);
+    printf("arg_10=%d\n", (uint16_t)rsp[0x18/8]);
+
+    biometricDevice = (uint64_t *)rsp[8/8];
+    if(biometricDevice) {
+        biometricDevice = (uint64_t *)*biometricDevice;
+        calib_results= biometricDevice + 0xd8/8;
+        src = (uint8_t *)calib_results[0x10/8];
+        if(src) {
+            printf("In: ");
+            for(i=0;i<0x200;i++)
+                printf("%02x", src[i]);
+            puts("");
+        }
+
+        calib_info = (uint64_t *)biometricDevice[0x288/8];
+        dst = (uint8_t *)calib_info[0x80/8];
+        printf("Out: ");
+        for(i=0;i<0x200;i++)
+            printf("%02x", dst[i]);
+        puts("");
+    }
+}
+
+void
+handle_sub_180067360(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *biometricDevice;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint64_t *calib_results, *calib_info;
+    uint8_t *src, *dst;
+    int i;
+
+    print_regs(ExceptionInfo);
+    rsp += 0x58/8;
+    printf("arg_0=%016llx\n", rsp[0x8/8]);
+    printf("arg_8=%016llx\n", rsp[0x10/8]);
+    printf("arg_10=%016llx\n", rsp[0x18/8]);
+    printf("arg_18=%016llxd\n", rsp[0x20/8]);
+
+    biometricDevice = (uint64_t *)rsp[8/8];
+    if(biometricDevice) {
+        biometricDevice = (uint64_t *)*biometricDevice;
+        if(!biometricDevice)
+            puts("biometricDevice is null");
+        calib_results= biometricDevice + 0xd8/8;
+        src = (uint8_t *)calib_results[0x10/8];
+        if(src) {
+            printf("Avg: ");
+            for(i=0;i<0x200;i++)
+                printf("%02x", src[i]);
+            puts("");
+        }
+
+        calib_info = (uint64_t *)biometricDevice[0x288/8];
+        if(calib_info) {
+            dst = (uint8_t *)calib_info[0x80/8];
+            if(dst) {
+                printf("Line Update Info > calibration blob: ");
+                for(i=0;i<0x200;i++)
+                    printf("%02x", dst[i]);
+                puts("");
+            }
+        }
+    }
+}
+
+void
+handle_hack_timeslot_table_for_regwrite_8000203c(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t **rcx = (uint64_t **)ctx->Rcx;
+
+    print_biometric_device(*rcx);
+}
+
 struct breakpoint breakpoints[] = {
-    { (unsigned char *)blah, handle_blah },
-    { (unsigned char *)0x1800409B0, handle_trace },
-    { (unsigned char *)0x18005FD40, handle_reset_calib_data_and_calibrate },
+    { "blah", (unsigned char *)blah, handle_blah },
+    { NULL, (unsigned char *)0x1800409B0, handle_trace },
+    { "handle_reset_calib_data_and_calibrate", (unsigned char *)0x18005FD40, handle_reset_calib_data_and_calibrate },
+    { "handle_calibrate_iteration", (unsigned char *)0x000000018006DF20, handle_calibrate_iteration },
+    { NULL, (unsigned char *)0x000000018003E6F9, handle_memmove },
+    { "handle_line_update", (unsigned char *)0x000000018008F950, handle_line_update},
+    { "print_regs", (unsigned char *)0x000000018009D2D4, print_regs },
+    { "z", (unsigned char *)0x000000018008E326, handle_z },
+    { NULL,(unsigned char *)0x000000018003E623, handle_malloc },
+    { "handle_avg", (unsigned char *)0x0000000180093FC8, handle_avg },
+    { "handle_scale_calibration_buffer_start", (unsigned char *)0x0000000180071AC0, handle_scale_calibration_buffer_start }, // scale_calibration_buffer
+    { "handle_scale_calibration_buffer_end", (unsigned char *)0x00000001800723F9, handle_scale_calibration_buffer_end }, // scale_calibration_buffer
+    { "scale_calibration_buffer", (unsigned char *)0x00000001800746B0, print_regs }, // subfunction of scale_calibration_buffer
+    { "handle_sub_180067360_start", (unsigned char *)0x0000000180067377, handle_sub_180067360 }, // called from scale_calibration_buffer 3 times
+    { "handle_sub_180067360_end", (unsigned char *)0x0000000180067597, handle_sub_180067360 }, // called from scale_calibration_buffer 3 times
+    { "hack_timeslot_table_for_regwrite_8000203c", (unsigned char *)0x0000000180087540, handle_hack_timeslot_table_for_regwrite_8000203c},
     { 0 }
 };
 
@@ -1921,6 +2234,7 @@ usage()
 int
 main(int argc, char *argv[])
 {
+    char *br = getenv("SANDBOX_BREAKPOINTS");
     void (*what)();
     IClassFactory *fact = 0;
 
@@ -1950,8 +2264,7 @@ main(int argc, char *argv[])
     LPVOID dibr = 0;
     proc(GUID_DEVINTERFACE_BIOMETRIC_READER, IID_IUnknown, (LPVOID *)&dibr);
     printf("GUID_DEVINTERFACE_BIOMETRIC_READER=%p\n", dibr);
-    printf("&brk_on_decrypt=%p\n", &brk_on_decrypt);
-    Sleep(5000);
+    //Sleep(5000);
     //DllGetClassObject(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
     IDriverEntry *inst;
     printf("about to create instance fact = %p\r\n", fact);
@@ -1981,10 +2294,13 @@ main(int argc, char *argv[])
     Sleep(100);
 
     // Driver loaded, instument the code
-    set_bps(breakpoints);
-    // Test breakpoints
-    blah();
-    blah();
+    if(br && strcmp(br, "1") == 0) {
+        set_bps(breakpoints);
+
+        // Test breakpoints
+        blah();
+        blah();
+    }
 
     MyDevInit *devinit = new MyDevInit();
     printf("about to add device %p\r\n", devinit);

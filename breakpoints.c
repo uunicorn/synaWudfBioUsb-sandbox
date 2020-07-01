@@ -22,6 +22,8 @@ BreakpointExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
             if(b->address == addr) {
                 last_hit = b;
                 *addr = b->orig_byte;
+                if(b->name)
+                    printf("=========================== %s =======================\n", b->name);
                 b->handler(ExceptionInfo);
                 ExceptionInfo->ContextRecord->EFlags |= 0x100; // enable single step execution
                 SetThreadContext(GetCurrentThread(), ExceptionInfo->ContextRecord); // non-return
@@ -29,8 +31,14 @@ BreakpointExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
 
     }
     else if(code == EXCEPTION_SINGLE_STEP) {
-        // restore last breakpoint
-        *last_hit->address = 0xcc;
+        if(last_hit) {
+            // restore last breakpoint
+            *last_hit->address = 0xcc;
+            last_hit = NULL;
+        }
+        else {
+            printf("EXCEPTION_SINGLE_STEP: %p\n", addr);
+        }
         // single step execution is disabled automatically
         return EXCEPTION_CONTINUE_EXECUTION;
     }
@@ -61,7 +69,7 @@ set_bps(struct breakpoint *bps)
         b->orig_byte = *b->address;
         // int3
         *b->address = 0xcc;
-        printf("Setting bp at %p, old byte=%02x\n", b->address, b->orig_byte);
+        printf("Setting bp at %p, old byte=%02x (%s)\n", b->address, b->orig_byte, b->name);
     }
 }
 
