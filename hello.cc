@@ -1474,7 +1474,7 @@ void
 identifyFeatureSet()
 {
     //char ibuf[0x2000] = { 0 };
-    unsigned char obuf[0x888];
+    unsigned char obuf[0x8880];
 
     //MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
     MyMem in(NULL, 0), out(obuf, sizeof(obuf));
