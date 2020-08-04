@@ -6,4 +6,5 @@ struct breakpoint {
     unsigned char orig_byte;
 };
 
+void print_regs(_EXCEPTION_POINTERS *ExceptionInfo);
 void set_bps(struct breakpoint *bps);

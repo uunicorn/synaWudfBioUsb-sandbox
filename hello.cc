@@ -1877,27 +1877,6 @@ handle_trace(_EXCEPTION_POINTERS *ExceptionInfo)
 }
 
 void
-print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
-{
-    PCONTEXT ctx = ExceptionInfo->ContextRecord;
-    uint64_t *rsp = (uint64_t *)ctx->Rsp;
-    size_t i;
-
-    // ExceptionInfo->ExceptionRecord->ExceptionAddress
-    printf("============================================ Breakpoint at %p ===================================\n", ctx->Rip);
-    printf("RSP = %016llx\n", ctx->Rsp);
-    printf("RCX = %016llx\n", ctx->Rcx);
-    printf("RDX = %016llx\n", ctx->Rdx);
-    printf("R8  = %016llx\n", ctx->R8);
-    printf("R9  = %016llx\n", ctx->R9);
-
-    printf("Stack:\n");
-    for(i=0;i<40;i++) {
-        printf("    %016llx\n", rsp[i]);
-    }
-}
-
-void
 handle_reset_calib_data_and_calibrate(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     printf("reset_calib_data_and_calibrate:\n");
@@ -1914,7 +1893,8 @@ handle_calibrate_iteration(_EXCEPTION_POINTERS *ExceptionInfo)
 
 const uint8_t target[] = { 
 //0x4e, 0x00, 0x28, 0x00, 0xfb, 0xb2, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x30, 0x00, 0x00, 0x00, 0x87, 0x00, 0x02, 0x00, 0x67, 0x00, 0x0a, 0x00, 0x01, 0x80, 0x00, 0x00, 0x0a, 0x02, 0x00, 0x00, 0x0b, 0x19, 0x00, 0x00, 0x88, 0x13, 0xb8, 0x0b, 0x01, 0x09, 0x10, 0x00, 
-0x17, 0x00, 0x00, 0x00, 
+//0x17, 0x00, 0x00, 0x00, 
+'n', 0x23, 0x00, 0x00, 0x00, 0x20, 0x00, 0x08, 0x00, 0x00, 0x20, 0x00, 0x80, 0x00, 0x00, 0x01, 0x00, 0x32, 0x00, 0x74, 0x00, 0x00, 0x00, 0x00, 0x80, 0x20, 0x20, 0x04, 0x00, 0x24, 0x20, 0x00, 0x00, 0x50, 0x20, 0x77, 0x36, 0x28, 0x20, 0x01, 0x00, 0x30, 0x20, 0x01, 0x00, 0x3c, 0x20, 0x80, 0x00, 0x08, 0x21, 0x38, 0x00, 0x0c, 0x21, 0x00, 0x00, 0x48, 0x21, 0x07, 0x00, 0x4c, 0x21, 0x00, 0x00, 0x58, 0x20, 0x00, 0x00, 0x5c, 0x20, 0x00, 0x00, 0x60, 0x20, 
 };
 
 
@@ -1923,7 +1903,7 @@ handle_malloc(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
     uint64_t *rsp = (uint64_t *)ctx->Rsp;
-    uint64_t *rax = (uint64_t *)ctx->Rax;
+    uint8_t *rax = (uint8_t *)ctx->Rax;
     uint32_t len = (uint32_t)rsp[5+1];
     size_t i;
     
@@ -1933,6 +1913,10 @@ handle_malloc(_EXCEPTION_POINTERS *ExceptionInfo)
         for(i=0;i<40;i++) {
             printf("    %016llx\n", rsp[i]);
         }
+    }
+
+    if(len == 728) {
+        printf("Allocating BiometricDevice!\n");
     }
 }
 
@@ -1958,10 +1942,43 @@ handle_memmove(_EXCEPTION_POINTERS *ExceptionInfo)
         for(i=0;i<40;i++) {
             printf("    %016llx\n", rsp[i]);
         }
-        //ctx->Dr0 = (uint64_t)(src+360);
-        //ctx->Dr7 = (1 << 0) | (1 << 16) | (3 << 18);
-        //SetThreadContext(GetCurrentThread(), ExceptionInfo->ContextRecord); // non-return
     }
+}
+
+void
+handle_x(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint8_t *src = (uint8_t*)ctx->Rcx;
+    int i;
+
+    printf("set sensor type before: ");
+    for(i=0;i<0x40;i++)
+        printf("%02x", src[i]);
+    puts("");
+}
+
+void
+handle_x_end(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    uint8_t *src, *dst;
+    int i;
+
+    //print_regs(ExceptionInfo);
+    rsp += 0x78/8;
+    printf("arg_0=%016llx\n", rsp[0x8/8]);
+    printf("arg_8=%016llx\n", rsp[0x10/8]);
+    printf("arg_10=%016llx\n", rsp[0x18/8]);
+    printf("arg_18=%016llxd\n", rsp[0x20/8]);
+
+    src = (uint8_t *)rsp[0x8/8];
+    printf("set sensor type after: ");
+    for(i=0;i<0x40;i++)
+        printf("%02x", src[i]);
+    puts("");
 }
 
 void
@@ -1969,7 +1986,7 @@ print_biometric_device(uint64_t *rcx)
 {
     size_t i, j;
 
-    printf("Biometric device:\n");
+    printf("Biometric device: %p\n", rcx);
     for(i=0;i<140;i++) {
         printf("    %04llx: 0x%016llx\n", i*8, rcx[i]);
         if(i*8 == 0x28) { // device/fw info (as returned by cmd_01)
@@ -2199,6 +2216,45 @@ handle_hack_timeslot_table_for_regwrite_8000203c(_EXCEPTION_POINTERS *ExceptionI
     print_biometric_device(*rcx);
 }
 
+void
+print_axbuf(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint8_t *rax= (uint8_t *)ctx->Rax;
+    int i;
+
+    printf("rax: ");
+    for(i=0;i<0x20;i++)
+        printf("%02x", rax[i]);
+    puts("");
+}
+
+void
+handle_new_biodev(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+
+    print_regs(ExceptionInfo);
+    ctx->Dr0 = ctx->Rax+0x128; // bytes per line
+    ctx->Dr7 = (1 << 0) | (1 << 16) | (3 << 18);
+    printf("hw breakpoint set to %016llx\n", ctx->Dr0);
+}
+
+void
+handle_lookup_capture_blob(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint64_t *rsp = (uint64_t *)ctx->Rsp;
+    int i;
+
+    print_regs(ExceptionInfo);
+    rsp += 0x98/8;
+    for(i=0;i<10;i++) {
+        printf("arg_%x=%016llx\n", i*8, rsp[i+1]);
+    }
+}
+
+
 struct breakpoint breakpoints[] = {
     { "blah", (unsigned char *)blah, handle_blah },
     { NULL, (unsigned char *)0x1800409B0, handle_trace },
@@ -2216,6 +2272,14 @@ struct breakpoint breakpoints[] = {
     { "handle_sub_180067360_start", (unsigned char *)0x0000000180067377, handle_sub_180067360 }, // called from scale_calibration_buffer 3 times
     { "handle_sub_180067360_end", (unsigned char *)0x0000000180067597, handle_sub_180067360 }, // called from scale_calibration_buffer 3 times
     { "hack_timeslot_table_for_regwrite_8000203c", (unsigned char *)0x0000000180087540, handle_hack_timeslot_table_for_regwrite_8000203c},
+    { "maybe set sensor type", (unsigned char *)0x0000000180066AAE, print_regs },
+    { "00000001800666B0 start", (unsigned char *)0x00000001800666B0, handle_x }, // sets the sensor type from arg0+0x10
+    { "00000001800666B0 end", (unsigned char *)0x0000000180066AC2, handle_x_end }, // sets the sensor type from arg0+0x10
+    { "bytes per line", (unsigned char *)0x000000018007F94F, print_regs },
+    { "bytes per line 2", (unsigned char *)0x000000018007F93A, print_axbuf },
+    { "new BiometricDevice, after memset", (unsigned char *)0x000000018007EE83, handle_new_biodev },
+    { "lookup capture blob", (unsigned char *)0x0000000180094B8A, handle_lookup_capture_blob },
+    //{ "avg, no overscan", (unsigned char *)0x0000000180093EB7, handle_avg_overscan },
     { 0 }
 };
 
@@ -2258,7 +2322,15 @@ main(int argc, char *argv[])
     }
 
     HMODULE pDll = LoadLibrary("synawudfbiousb.dll");
+    if(!pDll) {
+        puts("Failed to LoadLibrary dll");
+        return 3;
+    }
     DllGetClassObject_t *proc = (DllGetClassObject_t*)GetProcAddress(pDll, "DllGetClassObject");
+    if(!proc) {
+        puts("DllGetClassObject was not exported from the synawudfbiousb.dll");
+        return 3;
+    }
     printf("about to create factory\r\n");
     proc(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
     LPVOID dibr = 0;
@@ -2268,6 +2340,10 @@ main(int argc, char *argv[])
     //DllGetClassObject(SYNA_CLSID, IID_IUnknown, (LPVOID *)&fact);
     IDriverEntry *inst;
     printf("about to create instance fact = %p\r\n", fact);
+    if(!fact) {
+        puts("SYNA_CLSID not found in DLL");
+        return 3;
+    }
     fact->CreateInstance(NULL, IID_IDriverEntry, (LPVOID *)&inst);
 
 /*

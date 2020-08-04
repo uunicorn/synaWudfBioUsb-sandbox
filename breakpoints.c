@@ -10,12 +10,36 @@ LPTOP_LEVEL_EXCEPTION_FILTER old_filter;
 
 static struct breakpoint *breakpoints;
 
+void
+print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    ULONG64 *rsp = (ULONG64 *)ctx->Rsp;
+    size_t i;
+
+    // ExceptionInfo->ExceptionRecord->ExceptionAddress
+    printf("============================================ Breakpoint at %p ===================================\n", ctx->Rip);
+    printf("RSP = %016llx\n", ctx->Rsp);
+    printf("RAX = %016llx\n", ctx->Rax);
+    printf("RCX = %016llx\n", ctx->Rcx);
+    printf("RDX = %016llx\n", ctx->Rdx);
+    printf("R8  = %016llx\n", ctx->R8);
+    printf("R9  = %016llx\n", ctx->R9);
+
+    printf("Stack:\n");
+    for(i=0;i<40;i++) {
+        printf("    %016llx\n", rsp[i]);
+    }
+}
+
 LONG 
 BreakpointExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     static struct breakpoint *last_hit;
     DWORD code = ExceptionInfo->ExceptionRecord->ExceptionCode;
     unsigned char *addr = (unsigned char *)ExceptionInfo->ExceptionRecord->ExceptionAddress;
+
+    puts("trap");
 
     if(code == EXCEPTION_BREAKPOINT) {
         for(struct breakpoint *b = breakpoints;b->address;b++)
@@ -31,13 +55,14 @@ BreakpointExceptionFilter(_EXCEPTION_POINTERS *ExceptionInfo)
 
     }
     else if(code == EXCEPTION_SINGLE_STEP) {
-        if(last_hit) {
+        if(last_hit && addr-last_hit->address < 100) {
             // restore last breakpoint
             *last_hit->address = 0xcc;
             last_hit = NULL;
         }
         else {
             printf("EXCEPTION_SINGLE_STEP: %p\n", addr);
+            print_regs(ExceptionInfo);
         }
         // single step execution is disabled automatically
         return EXCEPTION_CONTINUE_EXECUTION;
