@@ -1474,7 +1474,7 @@ void
 identifyFeatureSet()
 {
     //char ibuf[0x2000] = { 0 };
-    unsigned char obuf[0x8880];
+    unsigned char obuf[0x880];
 
     //MyMem in(ibuf, sizeof(ibuf)), out(obuf, sizeof(obuf));
     MyMem in(NULL, 0), out(obuf, sizeof(obuf));
@@ -2255,7 +2255,7 @@ handle_lookup_capture_blob(_EXCEPTION_POINTERS *ExceptionInfo)
 }
 
 
-struct breakpoint breakpoints[] = {
+struct breakpoint breakpoints_0097[] = {
     { "blah", (unsigned char *)blah, handle_blah },
     { NULL, (unsigned char *)0x1800409B0, handle_trace },
     { "handle_reset_calib_data_and_calibrate", (unsigned char *)0x18005FD40, handle_reset_calib_data_and_calibrate },
@@ -2281,6 +2281,10 @@ struct breakpoint breakpoints[] = {
     { "lookup capture blob", (unsigned char *)0x0000000180094B8A, handle_lookup_capture_blob },
     //{ "avg, no overscan", (unsigned char *)0x0000000180093EB7, handle_avg_overscan },
     { 0 }
+};
+
+struct breakpoint breakpoints[] = {
+    { "CeivMode::IdentifyUserStorageOnFlash", (unsigned char *)0x0000000180017531, print_regs },
 };
 
 void

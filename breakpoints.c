@@ -27,7 +27,7 @@ print_regs(_EXCEPTION_POINTERS *ExceptionInfo)
     printf("R9  = %016llx\n", ctx->R9);
 
     printf("Stack:\n");
-    for(i=0;i<40;i++) {
+    for(i=0;i<80;i++) {
         printf("    %016llx\n", rsp[i]);
     }
 }
