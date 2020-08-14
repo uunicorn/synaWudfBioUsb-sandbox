@@ -2230,6 +2230,52 @@ print_axbuf(_EXCEPTION_POINTERS *ExceptionInfo)
 }
 
 void
+print_cxbuf(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    uint8_t *rcx= (uint8_t *)ctx->Rcx;
+    int i;
+
+    print_regs(ExceptionInfo);
+    printf("rcx: ");
+    for(i=0;i<0x400;i++)
+        printf("%02x", rcx[i]);
+    puts("");
+}
+
+
+uint8_t *tout;
+uint32_t *tsize;
+
+void
+handle_export_in(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    tout = (uint8_t *)ctx->R8;
+    tsize = (uint32_t *)ctx->R9;
+
+    print_regs(ExceptionInfo);
+}
+
+
+void
+handle_export_out(_EXCEPTION_POINTERS *ExceptionInfo)
+{
+    PCONTEXT ctx = ExceptionInfo->ContextRecord;
+    int i;
+
+    if(!tout || !tsize)
+        return;
+
+    print_regs(ExceptionInfo);
+    printf("tout: ");
+    for(i=0;i<*tsize;i++)
+        printf("%02x", tout[i]);
+    puts("");
+}
+
+
+void
 handle_new_biodev(_EXCEPTION_POINTERS *ExceptionInfo)
 {
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
@@ -2285,6 +2331,15 @@ struct breakpoint breakpoints_0097[] = {
 
 struct breakpoint breakpoints[] = {
     { "CeivMode::IdentifyUserStorageOnFlash", (unsigned char *)0x0000000180017531, print_regs },
+    /*
+    { "create_MVWT", (unsigned char *)0x00000001800D7886, print_cxbuf },
+    { "00000001800E1330", (unsigned char *)0x00000001800E1330, print_cxbuf },
+    { "00000001800F5B73", (unsigned char *)0x00000001800F5B73, print_regs },
+    { "00000001800FA054", (unsigned char *)0x00000001800FA054, print_regs },
+    { "00000001800F71A2", (unsigned char *)0x00000001800F71A2, print_regs },
+    */
+    { "00000001800D8C24", (unsigned char *)0x00000001800D8C24, handle_export_in },
+    { "00000001800D8C34", (unsigned char *)0x00000001800D8C34, handle_export_out },
 };
 
 void
