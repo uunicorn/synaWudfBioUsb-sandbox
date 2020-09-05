@@ -10,13 +10,28 @@ is a tedious process, so this project contains a pre-compiled version of `a.exe`
 To run:
 
 * Clone and build [Wine with hacks](https://github.com/uunicorn/wine/tree/hacking/validiy-sensor) designed 
-  specifically for this thing to work. No need to `make install`, Wine can run when executed from the build tree.
-* Set environment variables similar to env.sh
+  specifically for this thing to work.
+  Can be built in Docker, for example
+```sh
+$ git clone https://github.com/uunicorn/wine -b validiy-sensor && cd $_
+$ docker build -t wine:validity .
+```
+
 * Download the Windows driver and extract contents with `innoextract`
-* Copy `synaWudfBioUsb.dll` from the extracted windows driver to this location
-* Copy `*.xpfwext` file from the extracted windows driver to `c:\windows\system32` inside youre new Wine prefix
-* Within this prefix create a file `c:\usb.txt` with your USB device id. E.g: `echo '138a:0097' > ~/.wine-testbed/drive_c/usb.txt`
-* Run `<wine build tree>/wine64 a.exe 2>&1 | tee logfile.txt`
+* Copy `synaWudfBioUsb.dll` from the extracted windows driver to the current directory
+* Copy `*.xpfwext` file from the extracted windows driver to the current directory
+* Create a file `usb.txt` with your USB device id:
+```
+$ echo '138a:0097' > usb.txt`
+```
+* Determine your fingerprint USB bus and device path:
+```
+DEVICE=$(lsusb -d 138a: | awk -F '[^0-9]+' '{ print "/dev/bus/usb/" $2 "/" $3 }')
+```
+* Run `a.exe` inside the container with one of the following options:
+```sh
+$ ./run.sh [ nop | identify | enroll ] 
+```
 * It may "fail" the first couple of times. Whenever driver detects
   that device ownership has changed (host computer details have changed), 
   it needs to re-flash and re-calibrate the device to establish a new

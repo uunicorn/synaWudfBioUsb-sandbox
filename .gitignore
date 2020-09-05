@@ -1,0 +1,6 @@
+codeGetExtractPath/
+*.log
+*.dll
+*.x[pe]fwext
+*.exe
+!a.exe
