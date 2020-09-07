@@ -13,7 +13,7 @@ To run:
   specifically for this thing to work.
   Can be built in Docker, for example
 ```sh
-$ git clone https://github.com/uunicorn/wine -b validiy-sensor && cd $_
+$ git clone https://github.com/uunicorn/wine -b hacking/validiy-sensor && cd wine
 $ docker build -t wine:validity .
 ```
 
