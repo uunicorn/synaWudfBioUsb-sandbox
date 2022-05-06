@@ -473,7 +473,7 @@ struct MyRequest : public IWDFIoRequest {
         virtual void STDMETHODCALLTYPE Complete( 
             /* [annotation][in] */ 
             _In_  HRESULT CompletionStatus){
-            printf("Complete: %ld %p\r\n", CompletionStatus, &CompletionStatus);
+            printf("Complete: %lx\r\n", (unsigned long)CompletionStatus);
             complete = TRUE;
         }
 
@@ -1771,6 +1771,21 @@ getAttributes()
 }
 
 void
+setMode(unsigned short mode)
+{
+    unsigned char ibuf[8] = { 0, 0, 0, 0, mode & 0xff, mode >> 8, 0, 0 };
+
+    MyMem in(ibuf, sizeof(ibuf)), out(NULL, 0);
+    MyRequest req(WdfRequestOther, 0x44204C, &out, &in);
+
+    printf("about to setMode\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44204C, 0, 0);
+    while(!req.complete)
+        Sleep(200);
+    printf("\n");
+}
+
+void
 deleteRecord()
 {
         // delete record
@@ -2479,6 +2494,8 @@ main(int argc, char *argv[])
     while(!goIdle) {
         Sleep(200);
     }
+
+    setMode(2); // WINBIO_SENSOR_ADVANCED_MODE
 
     what();
 
