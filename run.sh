@@ -34,5 +34,5 @@ docker run --rm -it \
     -e USB_PLAYBACK=$PLAYBACK \
     -v $PWD:/$BASENAME \
     -v $PWD/usb.txt:/root/.wine/drive_c/usb.txt \
-    -v $PWD/$XPFWEXT:/root/.wine/drive_c/system32/$XPFWEXT \
+    -v $PWD/$XPFWEXT:/root/.wine/drive_c/windows/system32/$XPFWEXT \
     wine:validity sh -c "wine64 a.exe $WHAT 2> ${NOW}-wine.log" | tee "${NOW}.log"
