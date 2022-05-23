@@ -121,7 +121,20 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
                     pv->blob.pBlobData = (BYTE*)CoTaskMemAlloc(pv->blob.cbSize);
                     std::copy(buf.begin(), buf.end(), pv->blob.pBlobData);
                 }
-            } else {
+            } 
+            else if(fname == "LastUpdateSystemTimeStamp" || fname == "OldCalDataDeleted") {
+                std::ifstream input(fname + ".uint");
+                if(input) {
+                    pv->vt = VT_UINT;
+                    input >> pv->uintVal;
+                    std::cout << "UINT " << fname << " = " << pv->uintVal << std::endl; 
+                }
+                else {
+                    DECIMAL_SETZERO(pv->decVal);
+                    std::cout << "UINT " << fname << " not found" << std::endl; 
+                }
+            } 
+            else {
                 DECIMAL_SETZERO(pv->decVal);
             }
             return 0;
@@ -144,8 +157,14 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
                 case VT_I1:
                     printf("VT_I1: %d\n", pv->cVal);
                     break;
-                case VT_UINT:
-                    printf("VT_UINT: %d\n", pv->uintVal);
+                case VT_UINT: {
+                        std::string fname;
+                        std::wstring wfname(pszName);
+                        fname.assign(wfname.begin(), wfname.end());
+                        std::ofstream output(fname + ".uint");
+                        output << pv->uintVal << std::endl;
+                        printf("VT_UINT: %d\n", pv->uintVal);
+                    }
                     break;
                 case VT_BLOB: {
                         std::string fname;
