@@ -63,7 +63,7 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
             return 0; 
         }
         virtual ULONG STDMETHODCALLTYPE Release(void) {
-            printf("MyMem::Release\r\n");
+            //printf("MyMem::Release\r\n");
             return 0;
         }
     public:
@@ -175,7 +175,7 @@ struct MyNamedPropertyStore : public IWDFNamedPropertyStore2 {
                                 std::ostreambuf_iterator<char>(output));
 
                         char hex[800020], *p = hex;
-                        for(unsigned int i=0;i<(pv->blob.cbSize < 400000? pv->blob.cbSize : 400000);i++) {
+                        for(unsigned int i=0;i<(pv->blob.cbSize < 400? pv->blob.cbSize : 400);i++) {
                             p+=sprintf(p, "%02x", pv->blob.pBlobData[i]);
                         }
                         *p=0;
@@ -309,7 +309,7 @@ struct MyMem : public IWDFMemory {
             return 0; 
         }
         virtual ULONG STDMETHODCALLTYPE Release(void) {
-            printf("MyMem::Release\r\n");
+            //printf("MyMem::Release\r\n");
             return 0;
         }
     public:
@@ -552,7 +552,7 @@ struct MyRequest : public IWDFIoRequest {
             _Out_opt_  SIZE_T *pInBufferSize,
             /* [annotation][unique][out] */ 
             _Out_opt_  SIZE_T *pOutBufferSize){
-            printf("GetDeviceIoControlParameters %p %p %p\r\n", pControlCode, pInBufferSize, pOutBufferSize);
+            //printf("GetDeviceIoControlParameters %p %p %p\r\n", pControlCode, pInBufferSize, pOutBufferSize);
             *pControlCode = ctl;
             *pInBufferSize = inMem->size;
             *pOutBufferSize = outMem->size;
@@ -565,14 +565,14 @@ struct MyRequest : public IWDFIoRequest {
             /* [annotation][out] */ 
             _Out_  IWDFMemory **ppWdfMemory){
             *ppWdfMemory = outMem;
-            printf("GetOutputMemory\r\n");
+            //printf("GetOutputMemory\r\n");
         }
         
         virtual void STDMETHODCALLTYPE GetInputMemory( 
             /* [annotation][out] */ 
             _Out_  IWDFMemory **ppWdfMemory){
             *ppWdfMemory = inMem;
-            printf("GetInputMemory\r\n");
+            // printf("GetInputMemory\r\n");
         }
 
         
@@ -1538,7 +1538,7 @@ identify()
 
     printf("about to IOCTL_BIOMETRIC_CAPTURE_DATA\r\n");
     myQueue->ioctl->OnDeviceIoControl(myQueue, &req, IOCTL_BIOMETRIC_CAPTURE_DATA, 0, 0);
-    Sleep(5000);
+    //Sleep(5000);
     // printf("CANCEL!!!\n");
     //req.cancelCallback->OnCancel(&req);
     //printf("wakey wakey\r\n");
@@ -1556,7 +1556,7 @@ identify()
     while(!req.complete)
         Sleep(200);
 
-    Sleep(5000);
+    //Sleep(5000);
     
     std::wcout 
         << L"=======================" << std::endl
@@ -1622,6 +1622,28 @@ commitEnrollment()
     for(LONG_PTR i=0;i<req.informationSize;i++)
         printf("%02x", obuf[i]);
     printf("\n");
+}
+
+void
+reset()
+{
+    uint8_t buf[8];
+    MyMem in(NULL, 0), out(buf, sizeof(buf));
+    MyRequest req(WdfRequestOther, 0x440008, &out, &in);
+    
+    printf("about to Reset\r\n");
+    myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x440008, 0, 0);
+
+    while(!req.complete)
+        Sleep(200);
+
+    Sleep(100);
+
+
+    printf("Reset complete: ");
+    for(int i=0;i<req.informationSize;i++)
+        printf("%02x", buf[i]);
+    printf("\r\n");
 }
 
 void
@@ -1792,16 +1814,16 @@ getAttributes()
 void
 setMode(unsigned short mode)
 {
-    unsigned char ibuf[8] = { 0, 0, 0, 0, mode & 0xff, mode >> 8, 0, 0 };
+    uint32_t ibuf[2] = { mode, 2 };
 
-    MyMem in(ibuf, sizeof(ibuf)), out(NULL, 0);
+    MyMem in((unsigned char*)ibuf, sizeof(ibuf)), out(NULL, 0);
     MyRequest req(WdfRequestOther, 0x44204C, &out, &in);
 
     printf("about to setMode\r\n");
     myQueue->ioctl->OnDeviceIoControl(myQueue, &req, 0x44204C, 0, 0);
     while(!req.complete)
         Sleep(200);
-    printf("\n");
+    printf("setMode - complete\n");
 }
 
 void
@@ -2395,6 +2417,7 @@ main(int argc, char *argv[])
     void (*what)();
     IClassFactory *fact = 0;
 
+#if 0
     if(argc != 2) {
         usage();
         return 3;
@@ -2413,6 +2436,7 @@ main(int argc, char *argv[])
         usage();
         return 3;
     }
+#endif
 
     HMODULE pDll = LoadLibrary("synawudfbiousb.dll");
     if(!pDll) {
@@ -2514,9 +2538,19 @@ main(int argc, char *argv[])
         Sleep(200);
     }
 
+//    reset();
+
     setMode(2); // WINBIO_SENSOR_ADVANCED_MODE
 
-    what();
+    //what();
+    enroll();
+    
+    printf("======================================================\r\n");
+    printf("Sleeping 10 secons....\r\n");
+    printf("======================================================\r\n");
+    Sleep(10000);
+
+    identify();
 
     printf("about to de-init\r\n");
     inst->OnDeinitialize(aDriver);
