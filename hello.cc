@@ -1489,7 +1489,7 @@ operator << (std::basic_ostream<wchar_t> &os, WINBIO_REGISTERED_FORMAT r)
     return os << L"Owher=" << r.Owner << L", Type=" << r.Type;
 }
 
-void
+int
 identifyFeatureSet()
 {
     //char ibuf[0x2000] = { 0 };
@@ -1507,9 +1507,17 @@ identifyFeatureSet()
     for(LONG_PTR i=0;i<req.informationSize;i++)
         printf("%02x", obuf[i]);
     printf("\n");
+
+    /* A sensor match returns the stored identify record; a no-match result is
+       a zeroed structure (only a WinBio error dword further in is set).
+       Detect a record by its non-zero type/size header. */
+    int matched = req.informationSize >= 8 && (obuf[0] | obuf[1] | obuf[2] | obuf[3] |
+                                               obuf[4] | obuf[5] | obuf[6] | obuf[7]);
+    printf(matched ? "MATCH: identify record found\n" : "NO MATCH\n");
+    return matched ? 0 : 1;
 }
 
-void
+int
 identify()
 {
     char ibuf[1024*10];
@@ -1595,7 +1603,7 @@ identify()
             printf("sz=%lld\n", (PUCHAR)(hdr+1) - data->CaptureData.Data);
         }
     }
-    identifyFeatureSet();
+    return identifyFeatureSet();
 }
 
 void
@@ -1646,7 +1654,7 @@ reset()
     printf("\r\n");
 }
 
-void
+int
 enroll()
 {
     Sleep(500);
@@ -1749,6 +1757,8 @@ enroll()
     Sleep(1000);
 
     commitEnrollment();
+
+    return 0;
 }
 
 void
@@ -2398,9 +2408,10 @@ struct breakpoint breakpoints[] = {
     { "00000001800D8C34", (unsigned char *)0x00000001800D8C34, handle_export_out },
 };
 
-void
+int
 nop()
 {
+    return 0;
 }
 
 void
@@ -2414,10 +2425,9 @@ int
 main(int argc, char *argv[])
 {
     char *br = getenv("SANDBOX_BREAKPOINTS");
-    void (*what)();
+    int (*what)();
     IClassFactory *fact = 0;
 
-#if 0
     if(argc != 2) {
         usage();
         return 3;
@@ -2436,7 +2446,6 @@ main(int argc, char *argv[])
         usage();
         return 3;
     }
-#endif
 
     HMODULE pDll = LoadLibrary("synawudfbiousb.dll");
     if(!pDll) {
@@ -2542,16 +2551,26 @@ main(int argc, char *argv[])
 
     setMode(2); // WINBIO_SENSOR_ADVANCED_MODE
 
-    //what();
-    enroll();
-    
-    printf("======================================================\r\n");
-    printf("Sleeping 10 secons....\r\n");
-    printf("======================================================\r\n");
-    Sleep(10000);
+    int status = 0;
 
-    identify();
+    if(what == enroll) {
+        enroll();
+
+        printf("======================================================\r\n");
+        printf("Sleeping 10 secons....\r\n");
+        printf("======================================================\r\n");
+        Sleep(10000);
+
+        status = identify();
+    }
+    else if(what == identify) {
+        status = identify();
+    }
+    else {
+        status = what();    /* nop */
+    }
 
     printf("about to de-init\r\n");
     inst->OnDeinitialize(aDriver);
+    return status;
 }
